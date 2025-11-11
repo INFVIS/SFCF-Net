@@ -108,38 +108,4 @@ for dataset_name in ["Test_TNO"]:
             fused_rgb = cv2.cvtColor(ycrcb_fused, cv2.COLOR_YCrCb2RGB)
             img_save(fused_rgb, idx, test_out_folder)
 
-        # 结束时间-
-        #     end_time = time.time()
-        #     total_time += end_time - start_time
-        # avg_time = total_time / len(ir_list)
-
-        # print(f"✅ Total processing time: {total_time:.2f} seconds")
-        # print(f"✅ Average time per image: {avg_time:.4f} seconds")
-
-
-    # eval_folder=test_out_folder
-    # ori_img_folder=test_folder
-    #
-    # metric_result = np.zeros((8))
-    # for img_name in os.listdir(os.path.join(ori_img_folder,"ir")):
-    #         ir = image_read_cv2(os.path.join(ori_img_folder,"ir", img_name), 'GRAY')
-    #         vi = image_read_cv2(os.path.join(ori_img_folder,"vis", img_name), 'GRAY')
-    #         fi = image_read_cv2(os.path.join(eval_folder, img_name.split('.')[0]+".png"), 'GRAY')
-    #         metric_result += np.array([Evaluator.EN(fi), Evaluator.SD(fi)
-    #                                     , Evaluator.SF(fi), Evaluator.MI(fi, ir, vi)
-    #                                     , Evaluator.SCD(fi, ir, vi), Evaluator.VIFF(fi, ir, vi)
-    #                                     , Evaluator.Qabf(fi, ir, vi), Evaluator.SSIM(fi, ir, vi)])
-    #
-    # metric_result /= len(os.listdir(eval_folder))
-    # print("\t\t EN\t SD\t SF\t MI\tSCD\tVIF\tQabf\tSSIM")
-    # print(model_name+'\t'+str(np.round(metric_result[0], 2))+'\t'
-    #         +str(np.round(metric_result[1], 2))+'\t'
-    #         +str(np.round(metric_result[2], 2))+'\t'
-    #         +str(np.round(metric_result[3], 2))+'\t'
-    #         +str(np.round(metric_result[4], 2))+'\t'
-    #         +str(np.round(metric_result[5], 2))+'\t'
-    #         +str(np.round(metric_result[6], 2))+'\t'
-    #         +str(np.round(metric_result[7], 2))
-    #         )
-    # print("="*80)
     print("finish")
