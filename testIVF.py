@@ -27,7 +27,6 @@ def natural_sort_key(name):
     # 按照文件名中的数字顺序排序
     return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', name)]
 
-# for dataset_name in ["Test_TNO", "Test_MSRS", "Test_M3FD", "Test_LLVIP", "Test_FLIR"]:
 for dataset_name in ["Test_TNO"]:
     print("\n"*2+"="*80)
     model_name="CDDFuse    "
@@ -55,30 +54,10 @@ for dataset_name in ["Test_TNO"]:
     BaseFuseLayer.eval()
     DetailFuseLayer.eval()
 
-    # with torch.no_grad():
-    #     # 打印模型参数总量（MB）
-    #     total_params_MB = sum([
-    #         count_parameters_in_MB(Encoder_level_1),
-    #         count_parameters_in_MB(Encoder_level_2),
-    #         count_parameters_in_MB(Decoder),
-    #         count_parameters_in_MB(BaseFuseLayer),
-    #         count_parameters_in_MB(DetailFuseLayer)
-    #     ])
-    #     print(f"\n✅ Total Parameters of CDDFuse Model: {total_params_MB:.2f} M")
-    #
-    #     # 开始时间统计
-    #
-    #     total_time = 0
     with torch.no_grad():
         ir_list = sorted(os.listdir(os.path.join(test_folder, "IR")), key=natural_sort_key)
         vis_list = sorted(os.listdir(os.path.join(test_folder, "VIS")), key=natural_sort_key)
         for idx, (img_name_ir, img_name_vis) in enumerate(zip(ir_list, vis_list), start=1):
-            # start_time = time.time()
-            # data_IR = image_read_cv2(os.path.join(test_folder, "IR", img_name_ir), mode='GRAY')[
-            #               np.newaxis, np.newaxis, ...] / 255.0
-            # data_VIS = image_read_cv2(os.path.join(test_folder, "VIS", img_name_vis), mode='GRAY')[
-            #                np.newaxis, np.newaxis, ...] / 255.0
-            # vis_bgr = cv2.imread(os.path.join(test_folder, "VIS", img_name_vis))
             data_IR = image_read_cv2(os.path.join(test_folder, "IR", img_name_ir), mode='GRAY')[
                           np.newaxis, np.newaxis, ...] / 255.0
             data_VIS = image_read_cv2(os.path.join(test_folder, "VIS", img_name_vis), mode='GRAY')[
