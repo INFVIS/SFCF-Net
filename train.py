@@ -4,7 +4,7 @@ print(f"Executing with: {sys.version}")
 
 from net import Restormer_Encoder_level_1, Restormer_Encoder_level_2, Restormer_Decoder, BaseFeatureExtraction, \
     DetailFeatureExtraction
-from fusion_net import BaseFusion, Detail_Fusion
+from new_fusion_net import BaseFusion, Detail_Fusion
 from utils.dataset import H5Dataset
 import os
 
@@ -15,11 +15,10 @@ import datetime
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from utils.loss import Fusionloss, cc
+from utils.loss import Fusionloss, DynamicFrequencyFusionLoss
 import kornia
 from kornia.losses import ssim_loss as Loss_ssim
 from utils.MM_Loss import Mutual_info_reg
-from utils.min_mm import CustomLoss
 
 '''
 ------------------------------------------------------------------------------
@@ -29,11 +28,11 @@ Configure our network
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 criteria_fusion = Fusionloss()
-model_str = 'SFCF_Net'
+model_str = 'CDDFuse'
 
 # . Set the hyper-parameters for training
 num_epochs = 40  # total epoch
-epoch_gap = 10  # epoches of Phase I
+epoch_gap = 0  # epoches of Phase I
 
 lr = 1e-4
 weight_decay = 0
@@ -50,7 +49,7 @@ optim_step = 20
 optim_gamma = 0.5
 
 # Model
-device = torch.device('cuda')
+device = torch.device('cuda:0')
 DIDF_Encoder_level_1 = nn.DataParallel(Restormer_Encoder_level_1()).to(device)
 DIDF_Encoder_level_2 = nn.DataParallel(Restormer_Encoder_level_2()).to(device)
 DIDF_Decoder = nn.DataParallel(Restormer_Decoder()).to(device)
@@ -81,6 +80,7 @@ scheduler5 = torch.optim.lr_scheduler.StepLR(optimizer5, step_size=optim_step, g
 
 MSELoss = nn.MSELoss()
 L1Loss = nn.L1Loss()
+Fre_loss = DynamicFrequencyFusionLoss()
 
 # data loader
 trainloader = DataLoader(H5Dataset(r"data/MSRS_train_imgsize_128_stride_200.h5"),
@@ -131,12 +131,12 @@ for epoch in range(num_epochs):
             out_enc_level1_I = DIDF_Encoder_level_1(data_IR)
             feature_V_B, feature_V_D = DIDF_Encoder_level_2(out_enc_level1_V)
             feature_I_B, feature_I_D = DIDF_Encoder_level_2(out_enc_level1_I)
-            latent_loss = Regulation(feature_V_D, feature_I_D)
             data_VIS_hat, _ = DIDF_Decoder(data_VIS, feature_V_B, feature_V_D)
             data_IR_hat, _ = DIDF_Decoder(data_IR, feature_I_B, feature_I_D)
 
-            cc_loss_B = cc(feature_V_B, feature_I_B)
-            cc_loss_D = cc(feature_V_D, feature_I_D)
+            cc_loss_B = Regulation(feature_V_B, feature_I_B)
+            cc_loss_D = Regulation(feature_V_D, feature_I_D)
+            loss_decomp = cc_loss_D / (1e-8 + cc_loss_B)
             mse_loss_V = 5 * Loss_ssim(data_VIS, data_VIS_hat, window_size=11, reduction='mean') + MSELoss(data_VIS,
                                                                                                            data_VIS_hat)
             mse_loss_I = 5 * Loss_ssim(data_IR, data_IR_hat, window_size=11, reduction='mean') + MSELoss(data_IR,
@@ -145,10 +145,10 @@ for epoch in range(num_epochs):
             Gradient_loss = L1Loss(kornia.filters.SpatialGradient()(data_VIS),
                                    kornia.filters.SpatialGradient()(data_VIS_hat))
 
-            loss_decomp = (cc_loss_D) ** 2 / (1.01 + cc_loss_B)
+            loss_decomp = cc_loss_D / (1e-8 + cc_loss_B)
 
             loss = coeff_mse_loss_VF * mse_loss_V + coeff_mse_loss_IF * \
-                   mse_loss_I + coeff_decomp * loss_decomp + coeff_tv * Gradient_loss + latent_loss
+                   mse_loss_I + coeff_decomp * loss_decomp + coeff_tv * Gradient_loss
             loss.backward()
             nn.utils.clip_grad_norm_(
                 DIDF_Encoder_level_1.parameters(), max_norm=clip_grad_norm_value, norm_type=2)
@@ -174,19 +174,20 @@ for epoch in range(num_epochs):
 
             feature_F_B = BaseFuseLayer(feature_V_B, feature_I_B)
             feature_F_D = DetailFuseLayer(feature_V_D, feature_I_D)
-            data_Fuse, feature_F = DIDF_Decoder(data_VIS, feature_F_B, feature_F_D)
+            data_Fuse, feature_F = DIDF_Decoder(feature_F_B, feature_F_D)
 
             mse_loss_V = 5 * Loss_ssim(data_VIS, data_Fuse, window_size=11, reduction='mean') + MSELoss(data_VIS,
                                                                                                         data_Fuse)
             mse_loss_I = 5 * Loss_ssim(data_IR, data_Fuse, window_size=11, reduction='mean') + MSELoss(data_IR,
                                                                                                        data_Fuse)
 
-            cc_loss_B = cc(feature_V_B, feature_I_B)
-            cc_loss_D = cc(feature_V_D, feature_I_D)
-            loss_decomp = (cc_loss_D) ** 2 / (1.01 + cc_loss_B)
+            cc_loss_B = Regulation(feature_V_B, feature_I_B)
+            cc_loss_D = Regulation(feature_V_D, feature_I_D)
+            loss_decomp = cc_loss_D / (1e-8 + cc_loss_B)
             fusionloss, _, _ = criteria_fusion(data_VIS, data_IR, data_Fuse)
+            fre_loss = Fre_loss(data_Fuse, data_IR, data_VIS)
 
-            loss = fusionloss + coeff_decomp * loss_decomp
+            loss = fusionloss + coeff_decomp + fre_loss
             loss.backward()
             nn.utils.clip_grad_norm_(
                 DIDF_Encoder_level_1.parameters(), max_norm=clip_grad_norm_value, norm_type=2)
@@ -198,11 +199,14 @@ for epoch in range(num_epochs):
                 BaseFuseLayer.parameters(), max_norm=clip_grad_norm_value, norm_type=2)
             nn.utils.clip_grad_norm_(
                 DetailFuseLayer.parameters(), max_norm=clip_grad_norm_value, norm_type=2)
+            nn.utils.clip_grad_norm_(
+                Regulation.parameters(), max_norm=clip_grad_norm_value, norm_type=2)
 
             optimizer1_1.step()
             optimizer1_2.step()
             optimizer2.step()
             optimizer3.step()
+            optimizer4.step()
             optimizer5.step()
 
         # Determine approximate time left
@@ -211,13 +215,14 @@ for epoch in range(num_epochs):
         time_left = datetime.timedelta(seconds=batches_left * (time.time() - prev_time))
         prev_time = time.time()
         sys.stdout.write(
-            "\r[Epoch %d/%d] [Batch %d/%d] [loss: %f] ETA: %.10s"
+            "\r[Epoch %d/%d] [Batch %d/%d] [loss: %f] [fre_loss: %f] ETA: %.10s"
             % (
                 epoch,
                 num_epochs,
                 i,
                 len(loader['train']),
                 loss.item(),
+                fre_loss.item(),
                 time_left,
             )
         )
@@ -230,7 +235,7 @@ for epoch in range(num_epochs):
     scheduler5.step()
     if not epoch < epoch_gap:
         scheduler3.step()
-        optimizer4.step()
+        scheduler4.step()
 
     if optimizer1_1.param_groups[0]['lr'] <= 1e-6:
         optimizer1_1.param_groups[0]['lr'] = 1e-6
@@ -253,4 +258,4 @@ if True:
         'BaseFuseLayer': BaseFuseLayer.state_dict(),
         'DetailFuseLayer': DetailFuseLayer.state_dict(),
     }
-    torch.save(checkpoint, os.path.join("models/hybrid_fusion_" + timestamp + '.pth'))
+    torch.save(checkpoint, os.path.join("models/hybrid_fusion_fre_loss_" + timestamp + '.pth'))
