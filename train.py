@@ -28,7 +28,7 @@ Configure our network
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 criteria_fusion = Fusionloss()
-model_str = 'CDDFuse'
+model_str = 'SFCF_Net'
 
 # . Set the hyper-parameters for training
 num_epochs = 40  # total epoch
